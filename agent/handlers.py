@@ -449,6 +449,9 @@ def handle_save_screenshot(ctx: AgentContext) -> State:
     RESULT_DIR.mkdir(parents=True, exist_ok=True)
     out_path = RESULT_DIR / filename
 
+    if not _sleep_while_running(ctx, 0.2):
+        return State.IDLE
+
     image = grab_region_bgr(SCREENSHOT)
     if not cv2.imwrite(str(out_path), image):
         log.error("스크린샷 저장 실패: %s", out_path)
