@@ -348,7 +348,7 @@ def handle_create_character(ctx: AgentContext) -> State:
             ("V2", V2_IMAGE),
             ("V3", V3_IMAGE),
         ],
-        timeout_sec=3.0,
+        timeout_sec=4.0,
         threshold=0.90,
         min_margin=0.05,
         should_continue=_still_running,
@@ -449,7 +449,7 @@ def handle_save_screenshot(ctx: AgentContext) -> State:
     RESULT_DIR.mkdir(parents=True, exist_ok=True)
     out_path = RESULT_DIR / filename
 
-    if not _sleep_while_running(ctx, 0.2):
+    if not _sleep_while_running(ctx, 0.3):
         return State.IDLE
 
     image = grab_region_bgr(SCREENSHOT)
@@ -460,21 +460,21 @@ def handle_save_screenshot(ctx: AgentContext) -> State:
 
     log.info("스크린샷 저장 경로 %s", out_path)
 
-    if not _sleep_while_running(ctx, 0.2):
+    if not _sleep_while_running(ctx, 0.3):
         return State.IDLE
 
     key_tap("esc")
-    if not _sleep_while_running(ctx, 0.2):
+    if not _sleep_while_running(ctx, 0.3):
         return State.IDLE
 
     mx, my = LOGOUT_MENU_CLICK
     left_click(mx, my)
-    if not _sleep_while_running(ctx, 0.2):
+    if not _sleep_while_running(ctx, 0.3):
         return State.IDLE
 
     cx, cy = LOGOUT_CONFIRM_CLICK
     left_click(cx, cy)
-    if not _sleep_while_running(ctx, 0.2):
+    if not _sleep_while_running(ctx, 0.3):
         return State.IDLE
 
     if not _sleep_while_running(ctx, 4.0):
