@@ -1,0 +1,15 @@
+# ModuleMacro 유저 정보
+# email : Gmail 기본 주소 (인증메일 수신 / plus 주소의 앞부분)
+# index : 현재 계정 번호 → 로그인 입력은 local+{index}@domain
+# step_gap : 매크로 각 스텝 직후 텀(초). 기본 0.04
+#
+# 예) email=qwe@gmail.com , index=10
+#     → 로그인 입력: qwe+10@gmail.com
+#     → 슬롯 부족 시 index=11 → 다음 로그인: qwe+11@gmail.com
+#
+# 사용법: 이 파일을 user_info.txt 로 복사(또는 이름 변경)한 뒤
+#         email / index 를 본인 값으로 수정하세요.
+
+email=qwe@gmail.com
+index=10
+step_gap=0.04

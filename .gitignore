@@ -1,19 +1,14 @@
 ﻿# Python
 __pycache__/
 *.py[cod]
+env/
 .venv/
 venv/
-.env
-.env.*
-*.log
 
-# OS / IDE
-.DS_Store
-Thumbs.db
-.idea/
-.vscode/
-
-# Secrets / credentials
+# Secrets / 개인 설정
 credentials.json
 token.json
-client_secret*.json
+user_info.txt
+
+# 실행 결과
+result/
