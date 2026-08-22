@@ -399,7 +399,7 @@ def handle_run_macro_1(ctx: AgentContext) -> State:
 
 
 def handle_run_macro_2(ctx: AgentContext) -> State:
-    """⑤ Loading 이미지 검출 → 성공 시 MACRO_2 시퀀스."""
+    """⑤ Loading 검출 → MACRO_2. 미검출 시 게임 종료로 보고 PREPARE_LOGIN."""
     from agent.macros import MACRO_2, run_macro
     from agent.regions import LOADING, LOADING_IMAGE
     from agent.vision import find_image_in_region_for
@@ -418,9 +418,9 @@ def handle_run_macro_2(ctx: AgentContext) -> State:
     if not ctx.running:
         return State.IDLE
     if not match.found:
-        log.warning("Loading 미검출")
-        ctx.last_error = "Loading not found"
-        return State.STOPPED
+        log.info("Loading 미검출 — 게임 종료로 간주, PREPARE_LOGIN 복귀")
+        ctx.reset_cycle_flags()
+        return State.PREPARE_LOGIN
 
     ok = run_macro(ctx, MACRO_2, name="MACRO_2")
     if not ok:
