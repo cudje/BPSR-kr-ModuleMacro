@@ -17,6 +17,9 @@ log = logging.getLogger(__name__)
 
 Handler = Callable[[AgentContext], State]
 
+# 이미지 검출 후 클릭·키 입력까지의 대기
+FOUND_ACTION_DELAY = 0.5
+
 
 def _sleep_while_running(ctx: AgentContext, seconds: float, *, step: float = 0.2) -> bool:
     """ctx.running 인 동안만 대기. 중단되면 False."""
@@ -29,11 +32,48 @@ def _sleep_while_running(ctx: AgentContext, seconds: float, *, step: float = 0.2
     return False
 
 
-def _click_match_center(match) -> None:
+def _click_match_center(ctx: AgentContext, match) -> bool:
+    """검출 후 FOUND_ACTION_DELAY 만큼 기다렸다가 중심 클릭. 중단 시 False."""
     from agent.mouse_util import left_click
 
+    if not _sleep_while_running(ctx, FOUND_ACTION_DELAY):
+        return False
     cx, cy = match.center
     left_click(cx, cy)
+    return True
+
+
+def _restart_via_start(ctx: AgentContext) -> State:
+    """Start 탐색 → 클릭 → 20초 대기 → PREPARE_LOGIN. 실패 시 IDLE."""
+    from agent.regions import START_IMAGE, full_screen_region
+    from agent.vision import find_image_in_region_for
+
+    def _still_running() -> bool:
+        return ctx.running
+
+    log.info("게임시작 시도")
+    screen = full_screen_region()
+    start_btn = find_image_in_region_for(
+        screen,
+        START_IMAGE,
+        timeout_sec=30.0,
+        should_continue=_still_running,
+    )
+    if not ctx.running:
+        return State.IDLE
+
+    if not start_btn.found:
+        log.warning("게임시작 시도 실패 — 메인 메뉴로")
+        ctx.running = False
+        return State.IDLE
+
+    if not _click_match_center(ctx, start_btn):
+        return State.IDLE
+
+    if not _sleep_while_running(ctx, 20.0):
+        return State.IDLE
+
+    return State.PREPARE_LOGIN
 
 
 def handle_idle(ctx: AgentContext) -> State:
@@ -61,8 +101,6 @@ def handle_prepare_login(ctx: AgentContext) -> State:
         LOGIN_TO_EMAIL_IMAGE,
         LOGOUT,
         LOGOUT_IMAGE,
-        START_IMAGE,
-        full_screen_region,
     )
     from agent.vision import find_image_in_region_for
 
@@ -77,7 +115,8 @@ def handle_prepare_login(ctx: AgentContext) -> State:
         should_continue=_still_running,
     )
     if logout.found:
-        _click_match_center(logout)
+        if not _click_match_center(ctx, logout):
+            return State.IDLE
     else:
         log.info("로그아웃 시도 실패")
 
@@ -92,7 +131,8 @@ def handle_prepare_login(ctx: AgentContext) -> State:
         should_continue=_still_running,
     )
     if email_btn.found:
-        _click_match_center(email_btn)
+        if not _click_match_center(ctx, email_btn):
+            return State.IDLE
         return State.EMAIL_LOGIN
 
     if not ctx.running:
@@ -111,7 +151,8 @@ def handle_prepare_login(ctx: AgentContext) -> State:
         return State.IDLE
 
     if exit_btn.found:
-        _click_match_center(exit_btn)
+        if not _click_match_center(ctx, exit_btn):
+            return State.IDLE
         if not ctx.running:
             return State.IDLE
 
@@ -124,33 +165,13 @@ def handle_prepare_login(ctx: AgentContext) -> State:
         if not ctx.running:
             return State.IDLE
         if check_btn.found:
-            _click_match_center(check_btn)
+            if not _click_match_center(ctx, check_btn):
+                return State.IDLE
 
     if not ctx.running:
         return State.IDLE
 
-    log.info("게임시작 시도")
-    screen = full_screen_region()
-    start_btn = find_image_in_region_for(
-        screen,
-        START_IMAGE,
-        timeout_sec=30.0,
-        should_continue=_still_running,
-    )
-    if not ctx.running:
-        return State.IDLE
-
-    if not start_btn.found:
-        log.warning("게임시작 시도 실패 — 메인 메뉴로")
-        ctx.running = False
-        return State.IDLE
-
-    _click_match_center(start_btn)
-
-    if not _sleep_while_running(ctx, 20.0):
-        return State.IDLE
-
-    return State.PREPARE_LOGIN
+    return _restart_via_start(ctx)
 
 
 def handle_email_login(ctx: AgentContext) -> State:
@@ -200,6 +221,8 @@ def handle_email_login(ctx: AgentContext) -> State:
         ctx.last_error = "XD not found"
         return State.STOPPED
 
+    if not _sleep_while_running(ctx, FOUND_ACTION_DELAY):
+        return State.IDLE
     ex, ey = EMAIL_FIELD_CLICK
     left_click(ex, ey)
     if not _sleep_while_running(ctx, 0.2):
@@ -267,6 +290,8 @@ def handle_email_login(ctx: AgentContext) -> State:
         ctx.last_error = "Login not found"
         return State.STOPPED
 
+    if not _sleep_while_running(ctx, FOUND_ACTION_DELAY):
+        return State.IDLE
     lx, ly = login_btn.center
     left_click(lx, ly)
     if not _sleep_while_running(ctx, 0.3):
@@ -301,9 +326,11 @@ def handle_server_select(ctx: AgentContext) -> State:
         return State.IDLE
 
     if server.found:
+        if not _sleep_while_running(ctx, FOUND_ACTION_DELAY):
+            return State.IDLE
         sx, sy = server.center
         left_click(sx, sy)
-        if not _sleep_while_running(ctx, 0.2):
+        if not _sleep_while_running(ctx, 0.3):
             return State.IDLE
 
         ex2, ey2 = SERVER_EXTRA_CLICK
@@ -348,7 +375,7 @@ def handle_create_character(ctx: AgentContext) -> State:
             ("V2", V2_IMAGE),
             ("V3", V3_IMAGE),
         ],
-        timeout_sec=4.0,
+        timeout_sec=6.0,
         threshold=0.90,
         min_margin=0.05,
         should_continue=_still_running,
@@ -368,18 +395,24 @@ def handle_create_character(ctx: AgentContext) -> State:
         ctx.account_id = str(updated.index)
         ctx.reset_cycle_flags()
         ex, ey = SLOTS_FULL_EXIT_CLICK
+        if not _sleep_while_running(ctx, FOUND_ACTION_DELAY * 2):
+            return State.IDLE
         left_click(ex, ey)
         return State.PREPARE_LOGIN
 
     if hit == "V2":
         ctx.character_slot = 2
         cx, cy = CREATE_SLOT_CLICK
+        if not _sleep_while_running(ctx, FOUND_ACTION_DELAY * 2):
+            return State.IDLE
         left_click(cx, cy)
         return State.RUN_MACRO_1
 
     if hit == "V3":
         ctx.character_slot = 3
         cx, cy = CREATE_SLOT_CLICK
+        if not _sleep_while_running(ctx, FOUND_ACTION_DELAY * 2):
+            return State.IDLE
         left_click(cx, cy)
         return State.RUN_MACRO_1
 
@@ -399,7 +432,8 @@ def handle_run_macro_1(ctx: AgentContext) -> State:
 
 
 def handle_run_macro_2(ctx: AgentContext) -> State:
-    """⑤ Loading 검출 → MACRO_2. 미검출 시 게임 종료로 보고 PREPARE_LOGIN."""
+    """⑤ Loading 검출 → MACRO_2. 미검출 시 ALT+F4 후 Start 재시작."""
+    from agent.keyboard_util import hotkey
     from agent.macros import MACRO_2, run_macro
     from agent.regions import LOADING, LOADING_IMAGE
     from agent.vision import find_image_in_region_for
@@ -418,10 +452,15 @@ def handle_run_macro_2(ctx: AgentContext) -> State:
     if not ctx.running:
         return State.IDLE
     if not match.found:
-        log.info("Loading 미검출 — 게임 종료로 간주, PREPARE_LOGIN 복귀")
+        log.info("Loading 미검출 — ALT+F4 후 게임 재시작")
+        hotkey("alt", "f4")
+        if not _sleep_while_running(ctx, 1.0):
+            return State.IDLE
         ctx.reset_cycle_flags()
-        return State.PREPARE_LOGIN
+        return _restart_via_start(ctx)
 
+    if not _sleep_while_running(ctx, FOUND_ACTION_DELAY):
+        return State.IDLE
     ok = run_macro(ctx, MACRO_2, name="MACRO_2")
     if not ok:
         return State.IDLE
@@ -429,18 +468,42 @@ def handle_run_macro_2(ctx: AgentContext) -> State:
 
 
 def handle_save_screenshot(ctx: AgentContext) -> State:
-    """⑦ 스크린샷 저장 + 로그아웃 → SERVER_SELECT."""
+    """⑦ Module 확인 → 스크린샷·로그아웃 또는 ALT+F4 후 Start 재시작."""
     import cv2
 
-    from agent.keyboard_util import key_tap
+    from agent.keyboard_util import hotkey, key_tap
     from agent.mouse_util import left_click
     from agent.regions import (
+        INGAME_LOGOUT,
+        INGAME_LOGOUT_IMAGE,
         LOGOUT_CONFIRM_CLICK,
         LOGOUT_MENU_CLICK,
+        MODULE,
+        MODULE_IMAGE,
         RESULT_DIR,
         SCREENSHOT,
     )
-    from agent.vision import grab_region_bgr
+    from agent.vision import find_image_in_region_for, grab_region_bgr
+
+    def _still_running() -> bool:
+        return ctx.running
+
+    module = find_image_in_region_for(
+        MODULE,
+        MODULE_IMAGE,
+        timeout_sec=3.0,
+        should_continue=_still_running,
+    )
+    if not ctx.running:
+        return State.IDLE
+
+    if not module.found:
+        log.info("Module 미검출 — ALT+F4 후 게임 재시작")
+        hotkey("alt", "f4")
+        if not _sleep_while_running(ctx, 1.0):
+            return State.IDLE
+        ctx.reset_cycle_flags()
+        return _restart_via_start(ctx)
 
     index = ctx.account_id if ctx.account_id is not None else "unknown"
     num = ctx.character_slot if ctx.character_slot is not None else 0
@@ -467,8 +530,26 @@ def handle_save_screenshot(ctx: AgentContext) -> State:
     if not _sleep_while_running(ctx, 0.3):
         return State.IDLE
 
-    mx, my = LOGOUT_MENU_CLICK
-    left_click(mx, my)
+    ingame_logout = find_image_in_region_for(
+        INGAME_LOGOUT,
+        INGAME_LOGOUT_IMAGE,
+        timeout_sec=3.0,
+        should_continue=_still_running,
+    )
+    if not ctx.running:
+        return State.IDLE
+    if ingame_logout.found:
+        if not _sleep_while_running(ctx, FOUND_ACTION_DELAY):
+            return State.IDLE
+        lx, ly = ingame_logout.center
+        left_click(lx, ly)
+    else:
+        key_tap("esc")
+        if not _sleep_while_running(ctx, 0.3):
+            return State.IDLE
+        mx, my = LOGOUT_MENU_CLICK
+        left_click(mx, my)
+
     if not _sleep_while_running(ctx, 0.3):
         return State.IDLE
 

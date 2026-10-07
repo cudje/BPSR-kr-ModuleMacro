@@ -238,6 +238,15 @@ LOADING = Region(
 )
 
 # --- SAVE_SCREENSHOT ---
+MODULE = Region(
+    key="module",
+    name="Module",
+    left=32,
+    top=7,
+    right=108,
+    bottom=71,
+    color="#66AAFF",
+)
 SCREENSHOT = Region(
     key="screenshot",
     name="Screenshot",
@@ -248,17 +257,17 @@ SCREENSHOT = Region(
     color="#66FFCC",
 )
 
-LOGOUT_MENU_CLICK = (1862, 1005)
-LOGOUT_CONFIRM_CLICK = (1189, 796)
-LOGOUT_MENU = Region(
-    key="logout_menu",
-    name="LogoutMenu",
-    left=LOGOUT_MENU_CLICK[0] - 4,
-    top=LOGOUT_MENU_CLICK[1] - 4,
-    right=LOGOUT_MENU_CLICK[0] + 4,
-    bottom=LOGOUT_MENU_CLICK[1] + 4,
+INGAME_LOGOUT = Region(
+    key="ingame_logout",
+    name="IngameLogout",
+    left=1810,
+    top=960,
+    right=1912,
+    bottom=1042,
     color="#FF6688",
 )
+LOGOUT_MENU_CLICK = (1862, 1005)
+LOGOUT_CONFIRM_CLICK = (1189, 796)
 LOGOUT_CONFIRM = Region(
     key="logout_confirm",
     name="LogoutConfirm",
@@ -285,6 +294,8 @@ FULL_SLOT_IMAGE = IMAGES_DIR / "FullSlot.png"
 V2_IMAGE = IMAGES_DIR / "V2.png"
 V3_IMAGE = IMAGES_DIR / "V3.png"
 LOADING_IMAGE = IMAGES_DIR / "Loading.png"
+INGAME_LOGOUT_IMAGE = IMAGES_DIR / "IngameLogout.png"
+MODULE_IMAGE = IMAGES_DIR / "Module.png"
 
 
 def full_screen_region() -> Region:
@@ -324,8 +335,9 @@ def get_all_regions() -> tuple[Region, ...]:
         V3_SLOT,
         CREATE_SLOT,
         LOADING,
+        MODULE,
         SCREENSHOT,
-        LOGOUT_MENU,
+        INGAME_LOGOUT,
         LOGOUT_CONFIRM,
         full_screen_region(),
     )
@@ -351,7 +363,8 @@ ALL_REGIONS: tuple[Region, ...] = (
     V3_SLOT,
     CREATE_SLOT,
     LOADING,
+    MODULE,
     SCREENSHOT,
-    LOGOUT_MENU,
+    INGAME_LOGOUT,
     LOGOUT_CONFIRM,
 )
