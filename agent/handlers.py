@@ -18,7 +18,7 @@ log = logging.getLogger(__name__)
 Handler = Callable[[AgentContext], State]
 
 # 이미지 검출 후 클릭·키 입력까지의 대기
-FOUND_ACTION_DELAY = 0.5
+FOUND_ACTION_DELAY = 0.4
 
 
 def _sleep_while_running(ctx: AgentContext, seconds: float, *, step: float = 0.2) -> bool:
@@ -395,7 +395,7 @@ def handle_create_character(ctx: AgentContext) -> State:
         ctx.account_id = str(updated.index)
         ctx.reset_cycle_flags()
         ex, ey = SLOTS_FULL_EXIT_CLICK
-        if not _sleep_while_running(ctx, FOUND_ACTION_DELAY * 2):
+        if not _sleep_while_running(ctx, FOUND_ACTION_DELAY):
             return State.IDLE
         left_click(ex, ey)
         return State.PREPARE_LOGIN
@@ -403,7 +403,7 @@ def handle_create_character(ctx: AgentContext) -> State:
     if hit == "V2":
         ctx.character_slot = 2
         cx, cy = CREATE_SLOT_CLICK
-        if not _sleep_while_running(ctx, FOUND_ACTION_DELAY * 2):
+        if not _sleep_while_running(ctx, FOUND_ACTION_DELAY):
             return State.IDLE
         left_click(cx, cy)
         return State.RUN_MACRO_1
@@ -411,7 +411,7 @@ def handle_create_character(ctx: AgentContext) -> State:
     if hit == "V3":
         ctx.character_slot = 3
         cx, cy = CREATE_SLOT_CLICK
-        if not _sleep_while_running(ctx, FOUND_ACTION_DELAY * 2):
+        if not _sleep_while_running(ctx, FOUND_ACTION_DELAY):
             return State.IDLE
         left_click(cx, cy)
         return State.RUN_MACRO_1
@@ -540,8 +540,8 @@ def handle_save_screenshot(ctx: AgentContext) -> State:
     ctx.module_vdata = None
 
     # 채널 전환 로딩 중에 Esc를 누르면 로그아웃 메뉴가 열리지 않는다.
-    log.info("채널 전환 대기 6초 후 로그아웃")
-    if not _sleep_while_running(ctx, 6.0):
+    log.info("채널 전환 대기 8초 후 로그아웃")
+    if not _sleep_while_running(ctx, 8.0):
         return State.IDLE
 
     key_tap("esc")
