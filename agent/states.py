@@ -32,7 +32,7 @@ class State(Enum):
     """⑥ 조건 이미지 검출 후 매크로 2 실행."""
 
     SAVE_SCREENSHOT = auto()
-    """⑦ 영역 스크린샷 저장 + 로그아웃 → SERVER_SELECT."""
+    """⑦ 모듈 조합 결과 저장 + 로그아웃 → SERVER_SELECT."""
 
     STOPPED = auto()
     """중단(수동 정지 또는 치명 오류)."""

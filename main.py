@@ -6,6 +6,7 @@ ModuleMacro 진입점.
   8 — 시작
   9 — 영역 보기
   0 — 실행 중 중단 (모든 동작 중지 후 초기 메뉴로)
+  ; — 패킷 검사만 (20초 대기 후 조합 저장)
   ' — 현재 마우스 좌표 로그
   Ctrl+C — 프로그램 강제 종료
 """
@@ -39,6 +40,7 @@ MENU_TEXT = """
   8 : 시작
   9 : 영역 보기
   0 : 실행 중 중단 (초기 메뉴로)
+  ; : 패킷 검사만 (조합 텍스트 저장)
   ' : 마우스 좌표 로그
   Ctrl+C : 프로그램 강제 종료
 ========================================
@@ -47,7 +49,7 @@ MENU_TEXT = """
 
 def print_menu() -> None:
     print(MENU_TEXT)
-    log.info("대기 중 — 8/9/0/' / Ctrl+C(종료)  [7 잠금]")
+    log.info("대기 중 — 8/9/0/;/' / Ctrl+C(종료)  [7 잠금]")
 
 
 def show_regions() -> None:
@@ -126,6 +128,41 @@ def main() -> int:
         if not was_running:
             print_menu()
 
+    def run_packet_probe() -> None:
+        """; — 채널 입력 없이 패킷만 기다리고, 오면 조합 텍스트만 저장."""
+        if not worker_lock.acquire(blocking=False):
+            log.warning("이미 실행 중 — 무시")
+            return
+        from agent.module_solver import PACKET_WAIT_SEC, ModulePacketSession, save_module_result
+        from agent.regions import RESULT_DIR
+
+        ctx.running = True
+        session = ModulePacketSession()
+        try:
+            log.info("; — 패킷 검사 시작 (최대 %.0f초). 게임에서 채널을 전환하세요.", PACKET_WAIT_SEC)
+            session.start()
+            got_packet = session.wait(PACKET_WAIT_SEC, lambda: ctx.running)
+            if not ctx.running:
+                log.info("패킷 검사 중단")
+                return
+            if not got_packet or session.v_data is None:
+                log.info("모듈 패킷 미수신")
+                return
+            out_path = save_module_result(session.v_data, RESULT_DIR / "packet_test.txt")
+            log.info("패킷 검사 완료: %s", out_path)
+        except Exception as exc:
+            log.error("패킷 검사 실패: %s", exc)
+        finally:
+            session.stop()
+            ctx.running = False
+            if not exit_event.is_set():
+                print_menu()
+            worker_lock.release()
+
+    def on_packet_probe() -> None:
+        log.info("; — 패킷 검사")
+        threading.Thread(target=run_packet_probe, daemon=True).start()
+
     def on_mouse_pos() -> None:
         log_mouse_pos()
 
@@ -141,6 +178,7 @@ def main() -> int:
     keyboard.add_hotkey("8", on_start)
     keyboard.add_hotkey("9", on_show_regions)
     keyboard.add_hotkey("0", on_abort)
+    keyboard.add_hotkey(";", on_packet_probe)
     keyboard.add_hotkey("'", on_mouse_pos)
 
     print_menu()

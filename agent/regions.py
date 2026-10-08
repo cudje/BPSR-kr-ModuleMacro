@@ -278,7 +278,8 @@ LOGOUT_CONFIRM = Region(
     color="#88FF66",
 )
 
-RESULT_DIR = PROJECT_ROOT / "result"
+RESULT_DIR = PROJECT_ROOT / "results"
+GOOD_RESULT_DIR = PROJECT_ROOT / "good_results"
 
 # 템플릿 이미지 파일명 (assets/images/)
 LOGOUT_IMAGE = IMAGES_DIR / "Logout.png"

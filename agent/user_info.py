@@ -1,4 +1,4 @@
-"""user_info.txt — 이메일 + 인덱스 + 매크로 스텝 텀."""
+"""user_info.txt — 이메일 + 인덱스 + 매크로 스텝 텀 + 최소 점수."""
 
 from __future__ import annotations
 
@@ -25,6 +25,8 @@ class UserInfo:
     email: str
     index: int
     step_gap: float = DEFAULT_STEP_GAP
+    # None 이면 점수와 상관없이 results 에 저장한다.
+    min_score: float | None = None
     path: Path = USER_INFO_PATH
 
     @property
@@ -57,6 +59,7 @@ def load_user_info(path: Path | None = None) -> UserInfo:
     email: str | None = None
     index: int | None = None
     step_gap = DEFAULT_STEP_GAP
+    min_score: float | None = None
 
     with target.open(encoding="utf-8") as f:
         for raw in f:
@@ -77,27 +80,38 @@ def load_user_info(path: Path | None = None) -> UserInfo:
                 if step_gap < 0:
                     log.warning("step_gap 이 음수라 기본값 %.3f 사용", DEFAULT_STEP_GAP)
                     step_gap = DEFAULT_STEP_GAP
+            elif key == "min_score":
+                min_score = float(value)
             else:
                 log.warning("알 수 없는 키(무시): %s", key)
 
     if not email or index is None:
         raise ValueError(f"user_info.txt 에 email 과 index 가 필요합니다: {target}")
 
-    return UserInfo(email=email, index=index, step_gap=step_gap, path=target)
+    return UserInfo(
+        email=email,
+        index=index,
+        step_gap=step_gap,
+        min_score=min_score,
+        path=target,
+    )
 
 
 def save_user_info(info: UserInfo, path: Path | None = None) -> None:
-    """email/index/step_gap 을 단순 포맷으로 저장 (주석은 기본 헤더만 유지)."""
+    """email/index/step_gap/min_score 를 단순 포맷으로 저장 (주석은 기본 헤더만 유지)."""
     target = path or info.path
+    min_score_line = "" if info.min_score is None else f"min_score={info.min_score}\n"
     text = (
         "# ModuleMacro 유저 정보\n"
         "# email : Gmail 기본 주소 (인증메일 수신)\n"
         "# index : 현재 계정 번호 → 로그인 입력 local+{index}@domain\n"
         "# step_gap : 매크로 각 스텝 직후 텀(초)\n"
+        "# min_score : 1위 점수가 이 값 이상이면 good_results 에 저장\n"
         "\n"
         f"email={info.email.strip()}\n"
         f"index={info.index}\n"
         f"step_gap={info.step_gap}\n"
+        f"{min_score_line}"
     )
     target.write_text(text, encoding="utf-8")
 

@@ -432,9 +432,10 @@ def handle_run_macro_1(ctx: AgentContext) -> State:
 
 
 def handle_run_macro_2(ctx: AgentContext) -> State:
-    """⑤ Loading 검출 → MACRO_2. 미검출 시 ALT+F4 후 Start 재시작."""
+    """⑤ Loading 검출 → MACRO_2. 채널 전환 중 모듈 패킷을 읽는다."""
     from agent.keyboard_util import hotkey
-    from agent.macros import MACRO_2, run_macro
+    from agent.macros import MACRO_2, MACRO_2_CHANNEL, run_macro
+    from agent.module_solver import PACKET_WAIT_SEC, ModulePacketSession
     from agent.regions import LOADING, LOADING_IMAGE
     from agent.vision import find_image_in_region_for
 
@@ -442,6 +443,7 @@ def handle_run_macro_2(ctx: AgentContext) -> State:
         return ctx.running
 
     log.info("매크로2 실행")
+    ctx.module_vdata = None
 
     match = find_image_in_region_for(
         LOADING,
@@ -464,41 +466,60 @@ def handle_run_macro_2(ctx: AgentContext) -> State:
     ok = run_macro(ctx, MACRO_2, name="MACRO_2")
     if not ok:
         return State.IDLE
+
+    if not MACRO_2_CHANNEL:
+        log.warning("MACRO_2_CHANNEL이 비어 있습니다. 채널 변환 입력을 넣어 주세요.")
+
+    session = ModulePacketSession()
+    try:
+        session.start()
+    except Exception as exc:
+        log.error("모듈 패킷 캡처 시작 실패: %s", exc)
+        ctx.last_error = f"packet capture start failed: {exc}"
+        return State.STOPPED
+
+    log.info("채널 전환 중 모듈 패킷 대기")
+    try:
+        ok = run_macro(ctx, MACRO_2_CHANNEL, name="MACRO_2_CHANNEL")
+        if not ok:
+            return State.IDLE
+        got_packet = session.wait(PACKET_WAIT_SEC, _still_running)
+    finally:
+        session.stop()
+
+    if not ctx.running:
+        return State.IDLE
+    if not got_packet or session.v_data is None:
+        log.info("모듈 패킷 미수신 — ALT+F4 후 게임 재시작")
+        hotkey("alt", "f4")
+        if not _sleep_while_running(ctx, 1.0):
+            return State.IDLE
+        ctx.reset_cycle_flags()
+        return _restart_via_start(ctx)
+
+    ctx.module_vdata = session.v_data
     return State.SAVE_SCREENSHOT
 
 
 def handle_save_screenshot(ctx: AgentContext) -> State:
-    """⑦ Module 확인 → 스크린샷·로그아웃 또는 ALT+F4 후 Start 재시작."""
-    import cv2
-
+    """⑦ 모듈 조합을 results에 저장한 뒤 로그아웃."""
     from agent.keyboard_util import hotkey, key_tap
+    from agent.module_solver import save_module_result
     from agent.mouse_util import left_click
     from agent.regions import (
         INGAME_LOGOUT,
         INGAME_LOGOUT_IMAGE,
         LOGOUT_CONFIRM_CLICK,
         LOGOUT_MENU_CLICK,
-        MODULE,
-        MODULE_IMAGE,
         RESULT_DIR,
-        SCREENSHOT,
     )
-    from agent.vision import find_image_in_region_for, grab_region_bgr
+    from agent.vision import find_image_in_region_for
 
     def _still_running() -> bool:
         return ctx.running
 
-    module = find_image_in_region_for(
-        MODULE,
-        MODULE_IMAGE,
-        timeout_sec=3.0,
-        should_continue=_still_running,
-    )
-    if not ctx.running:
-        return State.IDLE
-
-    if not module.found:
-        log.info("Module 미검출 — ALT+F4 후 게임 재시작")
+    if ctx.module_vdata is None:
+        log.info("모듈 패킷 없음 — ALT+F4 후 게임 재시작")
         hotkey("alt", "f4")
         if not _sleep_while_running(ctx, 1.0):
             return State.IDLE
@@ -507,23 +528,20 @@ def handle_save_screenshot(ctx: AgentContext) -> State:
 
     index = ctx.account_id if ctx.account_id is not None else "unknown"
     num = ctx.character_slot if ctx.character_slot is not None else 0
-    filename = f"{index}_{num}.png"
+    out_path = RESULT_DIR / f"{index}_{num}.txt"
 
-    RESULT_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = RESULT_DIR / filename
-
-    if not _sleep_while_running(ctx, 0.3):
-        return State.IDLE
-
-    image = grab_region_bgr(SCREENSHOT)
-    if not cv2.imwrite(str(out_path), image):
-        log.error("스크린샷 저장 실패: %s", out_path)
-        ctx.last_error = f"screenshot save failed: {out_path}"
+    try:
+        save_module_result(ctx.module_vdata, out_path)
+    except Exception as exc:
+        log.error("모듈 조합 계산/저장 실패: %s", exc)
+        ctx.last_error = f"module result failed: {exc}"
         return State.STOPPED
 
-    log.info("스크린샷 저장 경로 %s", out_path)
+    ctx.module_vdata = None
 
-    if not _sleep_while_running(ctx, 0.3):
+    # 채널 전환 로딩 중에 Esc를 누르면 로그아웃 메뉴가 열리지 않는다.
+    log.info("채널 전환 대기 6초 후 로그아웃")
+    if not _sleep_while_running(ctx, 6.0):
         return State.IDLE
 
     key_tap("esc")

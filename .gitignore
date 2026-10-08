@@ -11,4 +11,9 @@ token.json
 user_info.txt
 
 # 실행 결과
-result/
+results/
+good_results/
+
+# C++ 확장 빌드 중간 파일
+vendor/**/build/
+*.pyc

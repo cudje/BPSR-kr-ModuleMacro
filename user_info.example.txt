@@ -2,6 +2,7 @@
 # email : Gmail 기본 주소 (인증메일 수신 / plus 주소의 앞부분)
 # index : 현재 계정 번호 → 로그인 입력은 local+{index}@domain
 # step_gap : 매크로 각 스텝 직후 텀(초). 기본 0.04
+# min_score : 1위 점수가 이 값 이상이면 good_results 에 저장. 미만이거나 조합이 없으면 results
 #
 # 예) email=qwe@gmail.com , index=10
 #     → 로그인 입력: qwe+10@gmail.com
@@ -13,3 +14,4 @@
 email=qwe@gmail.com
 index=10
 step_gap=0.04
+min_score=1670

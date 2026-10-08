@@ -9,11 +9,15 @@
 
 ## 세팅 (이것만)
 
+64비트 Windows의 **Python 3.11, 3.12, 3.13, 3.14** 중 하나로 만드세요. 모듈 조합 계산 확장이 이 버전용으로만 들어 있습니다.
+
 ```powershell
-python -m venv env
+py -3.12 -m venv env
 .\env\Scripts\Activate.ps1
 pip install -r requirements.txt
 ```
+
+게임 패킷을 읽으려면 [Npcap](https://npcap.com/#download)도 설치합니다. 설치 화면에서 **WinPcap API 호환 모드**를 켜 두세요. 이 모드가 꺼져 있으면 패키지는 설치돼 있어도 패킷을 받지 못합니다.
 
 그다음 두 가지만 맞추면 됩니다.
 
@@ -36,12 +40,14 @@ copy user_info.example.txt user_info.txt
 email=qwe@gmail.com
 index=10
 step_gap=0.04
+min_score=2000
 ```
 
 - 게임 입력: `qwe+10@gmail.com`
 - 인증메일 수신: `qwe@gmail.com`
 - 슬롯이 꽉 차면 `index`가 +1 → 다음엔 `qwe+11@gmail.com`
 - `step_gap`: 매크로 각 스텝 직후 대기(초). 생략하면 `0.04`
+- `min_score`: 1위 점수가 이 값 이상이면 `good_results`, 아니면 `results`. 생략하면 항상 `results`
 
 `user_info.txt`는 git에 올리지 않습니다 (개인 계정 정보).
 
@@ -88,10 +94,13 @@ python main.py
 | **7** | 저사양 시작 (잠금) |
 | **9** | 영역 보기 ON/OFF |
 | **0** | 중단 → 메뉴로 |
+| **;** | 패킷 검사만. 최대 20초 안에 채널을 바꾸면 조합을 `results` 또는 `good_results`의 `packet_test.txt`에 저장 |
 | **'** | 마우스 좌표 로그 |
 | **Ctrl+C** | 강제 종료 |
 
-안 되면 관리자 권한 터미널로 한 번 실행해 보세요.
+**8**로 전체를 돌릴 때는 `agent/macros.py`의 `MACRO_2_CHANNEL`에 채널을 바꾸는 클릭을 넣어 두세요. 그 입력이 실행되는 동안 패킷을 읽고, 조합 결과는 `results/{계정}_{슬롯}.txt`에 저장한 뒤 로그아웃합니다. 1위 점수가 `min_score` 이상이면 `good_results`에 저장합니다.
+
+안 되면 관리자 권한 터미널로 한 번 실행해 보세요. 패킷 캡처도 관리자 권한이 필요할 수 있습니다.
 
 ---
 
@@ -102,12 +111,15 @@ python main.py
 | 메일을 못 읽음 | `credentials.json` / 첫 동의 / OAuth 테스트 사용자 등록 |
 | 버튼을 못 찾음 | 해상도가 **1920×1080**인지, **9**로 영역 위치 |
 | 앱이 확인되지 않음 | OAuth 테스트 사용자에 본인 메일 추가 |
+| 모듈 패킷이 안 잡힘 | Npcap 설치, WinPcap 호환 모드, 관리자 권한. **;** 는 20초 안에 채널 전환 |
+| `module_optimizer_cpp` 를 못 불러옴 | 사용 중인 Python이 **3.11–3.14 64비트**인지 |
 
 ---
 
 ## 체크
 
-- [ ] `python -m venv env` → 활성화 → `pip install -r requirements.txt`
+- [ ] Python **3.11–3.14 64비트**로 `py -3.12 -m venv env` → 활성화 → `pip install -r requirements.txt`
+- [ ] [Npcap](https://npcap.com/#download) 설치 (WinPcap API 호환 모드)
 - [ ] `user_info.example.txt` → `user_info.txt` 로 복사/이름 변경 후 email·index 수정
 - [ ] `credentials.json` 배치
 - [ ] 게임 해상도 **1920×1080**
