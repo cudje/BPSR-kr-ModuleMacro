@@ -490,14 +490,10 @@ def handle_run_macro_2(ctx: AgentContext) -> State:
     if not ctx.running:
         return State.IDLE
     if not got_packet or session.v_data is None:
-        log.info("모듈 패킷 미수신 — ALT+F4 후 게임 재시작")
-        hotkey("alt", "f4")
-        if not _sleep_while_running(ctx, 1.0):
-            return State.IDLE
-        ctx.reset_cycle_flags()
-        return _restart_via_start(ctx)
-
-    ctx.module_vdata = session.v_data
+        log.info("모듈 패킷 미수신 — 조합 저장 없이 로그아웃으로 진행")
+        ctx.module_vdata = None
+    else:
+        ctx.module_vdata = session.v_data
     return State.SAVE_SCREENSHOT
 
 
@@ -511,6 +507,8 @@ def handle_save_screenshot(ctx: AgentContext) -> State:
         INGAME_LOGOUT_IMAGE,
         LOGOUT_CONFIRM_CLICK,
         LOGOUT_MENU_CLICK,
+        MAP,
+        MAP_IMAGE,
         RESULT_DIR,
     )
     from agent.vision import find_image_in_region_for
@@ -519,30 +517,35 @@ def handle_save_screenshot(ctx: AgentContext) -> State:
         return ctx.running
 
     if ctx.module_vdata is None:
-        log.info("모듈 패킷 없음 — ALT+F4 후 게임 재시작")
+        log.info("모듈 패킷 없음 — 조합 저장 없이 로그아웃으로 진행")
+    else:
+        index = ctx.account_id if ctx.account_id is not None else "unknown"
+        num = ctx.character_slot if ctx.character_slot is not None else 0
+        out_path = RESULT_DIR / f"{index}_{num}.txt"
+
+        try:
+            save_module_result(ctx.module_vdata, out_path)
+        except Exception as exc:
+            log.error("모듈 조합 계산/저장 실패 — 로그아웃으로 진행: %s", exc)
+
+        ctx.module_vdata = None
+
+    log.info("맵 아이콘 대기 후 로그아웃")
+    game_map = find_image_in_region_for(
+        MAP,
+        MAP_IMAGE,
+        timeout_sec=12.0,
+        should_continue=_still_running,
+    )
+    if not ctx.running:
+        return State.IDLE
+    if not game_map.found:
+        log.info("map 미검출 — ALT+F4 후 게임 재시작")
         hotkey("alt", "f4")
         if not _sleep_while_running(ctx, 1.0):
             return State.IDLE
         ctx.reset_cycle_flags()
         return _restart_via_start(ctx)
-
-    index = ctx.account_id if ctx.account_id is not None else "unknown"
-    num = ctx.character_slot if ctx.character_slot is not None else 0
-    out_path = RESULT_DIR / f"{index}_{num}.txt"
-
-    try:
-        save_module_result(ctx.module_vdata, out_path)
-    except Exception as exc:
-        log.error("모듈 조합 계산/저장 실패: %s", exc)
-        ctx.last_error = f"module result failed: {exc}"
-        return State.STOPPED
-
-    ctx.module_vdata = None
-
-    # 채널 전환 로딩 중에 Esc를 누르면 로그아웃 메뉴가 열리지 않는다.
-    log.info("채널 전환 대기 8초 후 로그아웃")
-    if not _sleep_while_running(ctx, 8.0):
-        return State.IDLE
 
     key_tap("esc")
     if not _sleep_while_running(ctx, 0.3):

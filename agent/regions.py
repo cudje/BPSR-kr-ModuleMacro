@@ -266,6 +266,15 @@ INGAME_LOGOUT = Region(
     bottom=1042,
     color="#FF6688",
 )
+MAP = Region(
+    key="map",
+    name="Map",
+    left=5,
+    top=195,
+    right=160,
+    bottom=271,
+    color="#AADDFF",
+)
 LOGOUT_MENU_CLICK = (1862, 1005)
 LOGOUT_CONFIRM_CLICK = (1189, 796)
 LOGOUT_CONFIRM = Region(
@@ -297,6 +306,7 @@ V3_IMAGE = IMAGES_DIR / "V3.png"
 LOADING_IMAGE = IMAGES_DIR / "Loading.png"
 INGAME_LOGOUT_IMAGE = IMAGES_DIR / "IngameLogout.png"
 MODULE_IMAGE = IMAGES_DIR / "Module.png"
+MAP_IMAGE = IMAGES_DIR / "map.png"
 
 
 def full_screen_region() -> Region:
@@ -339,6 +349,7 @@ def get_all_regions() -> tuple[Region, ...]:
         MODULE,
         SCREENSHOT,
         INGAME_LOGOUT,
+        MAP,
         LOGOUT_CONFIRM,
         full_screen_region(),
     )
@@ -367,5 +378,6 @@ ALL_REGIONS: tuple[Region, ...] = (
     MODULE,
     SCREENSHOT,
     INGAME_LOGOUT,
+    MAP,
     LOGOUT_CONFIRM,
 )

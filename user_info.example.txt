@@ -14,4 +14,4 @@
 email=qwe@gmail.com
 index=10
 step_gap=0.04
-min_score=1670
+min_score=1675

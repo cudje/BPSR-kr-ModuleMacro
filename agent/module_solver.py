@@ -13,7 +13,7 @@ from pathlib import Path
 log = logging.getLogger(__name__)
 
 # 채널 전환 입력이 끝난 뒤 모듈 패킷을 기다리는 시간.
-PACKET_WAIT_SEC = 20.0
+PACKET_WAIT_SEC = 15.0
 # 조건마다 남기는 상위 조합 수.
 RANK_PER_CONSTRAINT = 3
 
