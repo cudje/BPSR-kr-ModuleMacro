@@ -15,6 +15,7 @@ backup.pdf
 # 실행 결과
 results/
 good_results/
+fig.png
 
 # C++ 확장 빌드 중간 파일
 vendor/**/build/
