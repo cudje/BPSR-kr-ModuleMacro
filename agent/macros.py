@@ -100,12 +100,11 @@ MACRO_2: tuple[MacroStep, ...] = (
     KeyTap("esc"),
     Delay(0.700),
     KeyDown("d"),
-    Delay(0.850),
+    Delay(0.810),
     KeyUp("d"),
-    Delay(0.050),
     KeyTap("f"),
     KeyDown("d"),
-    Delay(1.700),
+    Delay(1.690),
     KeyUp("d"),
     KeyDown("w"),
     Delay(0.400),
@@ -137,7 +136,7 @@ MACRO_2: tuple[MacroStep, ...] = (
     KeyTap("esc"),
     Delay(0.300),
     KeyTap("esc"),
-    Delay(0.300),
+    Delay(0.700),
     # KeyTap("j"),
     # Delay(0.800),
     # Click(222, 792, "left"),
@@ -194,17 +193,21 @@ MACRO_2: tuple[MacroStep, ...] = (
     Delay(0.200),
 )
 
-# 창 닫기·채널 변환. handle_run_macro_2가 이 목록을 실행하는 동안 모듈 패킷을 읽는다.
-# 채널을 바꾸는 키·클릭을 이 목록에 둔다. 패킷은 이 입력 도중 또는 직후에 도착한다.
-MACRO_2_CHANNEL: tuple[MacroStep, ...] = (
-    KeyTap("p"),
-    Delay(1.000),
-    Click(1460, 1006, "left"),
-    Delay(0.100),
-    KeyTap("1"),
-    KeyTap("3"),
-    Click(1795, 1005, "left"),
-)
+# 창 닫기·채널 변환. 채널 번호만 바꿔 11 → 12 → 13 순으로 다시 시도한다.
+# 패킷은 이 입력 도중 또는 직후에 도착한다.
+def channel_switch_macro(channel: str) -> tuple[MacroStep, ...]:
+    steps: list[MacroStep] = [
+        KeyTap("p"),
+        Delay(0.900),
+        Click(1460, 1006, "left"),
+        Delay(0.100),
+    ]
+    steps.extend(KeyTap(digit) for digit in str(channel))
+    steps.append(Click(1795, 1005, "left"))
+    return tuple(steps)
+
+
+MACRO_2_CHANNEL = channel_switch_macro("13")
 
 # 이전 모듈 탭 스크린샷용 입력. 패킷 계산으로 바꾸면서 실행하지 않는다.
 # # 모듈 탭 들어가기

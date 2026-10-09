@@ -434,7 +434,7 @@ def handle_run_macro_1(ctx: AgentContext) -> State:
 def handle_run_macro_2(ctx: AgentContext) -> State:
     """⑤ Loading 검출 → MACRO_2. 채널 전환 중 모듈 패킷을 읽는다."""
     from agent.keyboard_util import hotkey
-    from agent.macros import MACRO_2, MACRO_2_CHANNEL, run_macro
+    from agent.macros import MACRO_2, channel_switch_macro, run_macro
     from agent.module_solver import PACKET_WAIT_SEC, ModulePacketSession
     from agent.regions import LOADING, LOADING_IMAGE
     from agent.vision import find_image_in_region_for
@@ -467,33 +467,61 @@ def handle_run_macro_2(ctx: AgentContext) -> State:
     if not ok:
         return State.IDLE
 
-    if not MACRO_2_CHANNEL:
-        log.warning("MACRO_2_CHANNEL이 비어 있습니다. 채널 변환 입력을 넣어 주세요.")
+    import threading
 
-    session = ModulePacketSession()
-    try:
-        session.start()
-    except Exception as exc:
-        log.error("모듈 패킷 캡처 시작 실패: %s", exc)
-        ctx.last_error = f"packet capture start failed: {exc}"
-        return State.STOPPED
+    from agent.window_util import force_foreground, get_console_hwnd, get_foreground_hwnd
 
-    log.info("채널 전환 중 모듈 패킷 대기")
-    try:
-        ok = run_macro(ctx, MACRO_2_CHANNEL, name="MACRO_2_CHANNEL")
-        if not ok:
+    ctx.module_vdata = None
+    for channel in ("11", "12", "13"):
+        if not ctx.running:
             return State.IDLE
-        got_packet = session.wait(PACKET_WAIT_SEC, _still_running)
-    finally:
-        session.stop()
+        log.info("채널 %s — 모듈 패킷 대기 후 채널 전환", channel)
+        session = ModulePacketSession()
+        try:
+            session.start()
+        except Exception as exc:
+            log.error("모듈 패킷 캡처 시작 실패: %s", exc)
+            ctx.last_error = f"packet capture start failed: {exc}"
+            return State.STOPPED
 
-    if not ctx.running:
-        return State.IDLE
-    if not got_packet or session.v_data is None:
-        log.info("모듈 패킷 미수신 — 조합 저장 없이 로그아웃으로 진행")
-        ctx.module_vdata = None
+        got_packet = False
+
+        def _wait_for_packet(sess: ModulePacketSession = session) -> None:
+            nonlocal got_packet
+            got_packet = sess.wait(PACKET_WAIT_SEC, _still_running)
+
+        waiter = threading.Thread(target=_wait_for_packet, daemon=True)
+        game_hwnd = 0
+        try:
+            waiter.start()
+            ok = run_macro(
+                ctx,
+                channel_switch_macro(channel),
+                name=f"MACRO_2_CHANNEL_{channel}",
+            )
+            if not ok:
+                return State.IDLE
+            if waiter.is_alive():
+                game_hwnd = get_foreground_hwnd()
+                console_hwnd = get_console_hwnd()
+                if console_hwnd and console_hwnd != game_hwnd:
+                    force_foreground(console_hwnd)
+                waiter.join()
+        finally:
+            session.stop()
+            if game_hwnd:
+                force_foreground(game_hwnd)
+                _sleep_while_running(ctx, 0.3)
+
+        if not ctx.running:
+            return State.IDLE
+        if got_packet and session.v_data is not None:
+            ctx.module_vdata = session.v_data
+            break
+        log.info("채널 %s 모듈 패킷 미수신", channel)
     else:
-        ctx.module_vdata = session.v_data
+        log.info("채널 11·12·13 모듈 패킷 미수신 — 로그아웃으로 진행")
+
     return State.SAVE_SCREENSHOT
 
 

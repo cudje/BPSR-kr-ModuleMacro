@@ -89,6 +89,8 @@ class PacketCapture:
         self._data = b''
 
         self.module_parser = ModuleParser()
+        # 게임 서버로 확정되기 전 조각. 확정 패킷을 버리지 않고 이어서 해석한다.
+        self._pending = {}
         
     def start_capture(self, callback: Callable[[Dict[str, Any]], None] = None):
         """
@@ -117,13 +119,47 @@ class PacketCapture:
         self.is_running = False
         logger.debug("패킷 캡처 중지")
         
+    def _install_capture_buffer(self) -> None:
+        """Npcap 커널 통을 키운다. conf.bufsize 는 Windows에서 적용되지 않는다."""
+        try:
+            from scapy.libs import winpcapy
+        except ImportError:
+            return
+        if getattr(winpcapy, "_modulemacro_buffer", False):
+            return
+        activate = getattr(winpcapy, "pcap_activate", None)
+        set_buffer = getattr(winpcapy, "pcap_set_buffer_size", None)
+        if activate is None or set_buffer is None:
+            return
+        size = 32 * 1024 * 1024
+
+        def _activate(pcap):
+            set_buffer(pcap, size)
+            return activate(pcap)
+
+        winpcapy.pcap_activate = _activate
+        winpcapy._modulemacro_buffer = True
+
+    def _prefer_capture(self) -> None:
+        """게임 창이 앞에 있어도 패킷 읽기가 밀리지 않게 우선순위를 올린다."""
+        try:
+            kernel32 = __import__("ctypes").windll.kernel32
+            # ABOVE_NORMAL. 전체 화면 게임이 앞에 있으면 기본 우선순위로는 버퍼가 넘친다.
+            kernel32.SetPriorityClass(kernel32.GetCurrentProcess(), 0x00008000)
+            kernel32.SetThreadPriority(kernel32.GetCurrentThread(), 2)
+        except Exception:
+            logger.debug("캡처 우선순위 변경 실패", exc_info=True)
+
     def _capture_loop(self):
         """抓包主循环"""
+        self._prefer_capture()
+        self._install_capture_buffer()
         try:
             # timeout으로 끊어 읽어야 stop_capture 이후 스레드가 패킷을 기다린 채 남지 않는다.
             while self.is_running:
                 sniff(
                     iface=self.interface,
+                    filter="tcp",
                     prn=self._process_packet,
                     store=0,
                     timeout=1,
@@ -167,20 +203,118 @@ class PacketCapture:
             payload = bytes(packet[Raw])
             self._process_tcp_stream(src_server, seq, payload)
             
+    def _seq_on_or_after(self, seq: int, start: int) -> bool:
+        """TCP 순서번호 start 이후인지. 앞쪽 절반만 뒤로 본다."""
+        return ((seq - start) & 0xFFFFFFFF) < 0x80000000
+
+    def _trim_pending(self, pending: dict) -> None:
+        if len(pending) <= 80:
+            return
+        for old in sorted(pending)[:-80]:
+            del pending[old]
+
+    def _contiguous_from_oldest(self, pending: dict) -> tuple[bytes, int]:
+        seqs = sorted(pending)
+        if not seqs:
+            return b"", 0
+        start = seqs[0]
+        expect = start
+        blob = bytearray()
+        for seq in seqs:
+            if seq != expect:
+                break
+            chunk = pending[seq]
+            blob += chunk
+            expect = (seq + len(chunk)) & 0xFFFFFFFF
+        return bytes(blob), start
+
+    def _pending_game_start(self, pending: dict) -> int | None:
+        """서명으로 게임 서버가 확인되는 첫 순서번호. 없으면 None."""
+        for seq in sorted(pending):
+            if self._identify_game_server(pending[seq]):
+                return seq
+        blob, start = self._contiguous_from_oldest(pending)
+        if blob and self._identify_game_server(blob):
+            return start
+        return None
+
+    def _contiguous_from(self, pending: dict, start: int) -> tuple[bytes, int]:
+        """start부터 끊기지 않은 조각을 붙이고, 다음 순서번호를 돌려준다."""
+        blob = bytearray()
+        expect = start
+        for seq in sorted(pending):
+            if not self._seq_on_or_after(seq, start):
+                continue
+            if seq != expect:
+                break
+            chunk = pending[seq]
+            blob += chunk
+            expect = (seq + len(chunk)) & 0xFFFFFFFF
+        return bytes(blob), expect
+
+    def _parse_standalone(self, blob: bytes) -> None:
+        """이 바이트만 메시지 해석한다. 본 스트림 버퍼는 그대로 둔다."""
+        if not blob:
+            return
+        saved = self._data
+        self._data = blob
+        try:
+            self._process_complete_packets()
+        finally:
+            self._data = saved
+
+    def _iter_islands(self, pending: dict) -> list[bytes]:
+        """순서 구멍으로 끊긴 연속 구간마다 바이트를 만든다."""
+        if not pending:
+            return []
+        islands: list[bytes] = []
+        expect = None
+        blob = bytearray()
+        for seq in sorted(pending):
+            chunk = pending[seq]
+            if expect is not None and seq != expect:
+                if blob:
+                    islands.append(bytes(blob))
+                blob = bytearray()
+            blob += chunk
+            expect = (seq + len(chunk)) & 0xFFFFFFFF
+        if blob:
+            islands.append(bytes(blob))
+        return islands
+
+    def _parse_islands(self, pending: dict) -> None:
+        """구멍 앞부분이 없어도, 이어진 구간 안에 모듈 정보가 있으면 읽는다."""
+        for island in self._iter_islands(pending):
+            self._parse_standalone(island)
+
     def _process_tcp_stream(self, src_server: str, seq: int, payload: bytes):
         """处理TCP流数据"""
         with self.tcp_lock:
-            # 服务器识别逻辑
+            # 서버를 알기 전에는 조각을 모아 둔다.
+            # 확인된 묶음은 따로 해석하고, 그 다음 순서부터 기존 재조립을 이어간다.
             if self.current_server != src_server:
-                if self._identify_game_server(payload):
-                    self.current_server = src_server
-                    self._clear_tcp_cache()
-                    self.tcp_next_seq = seq + len(payload)
-                    logger.debug("게임 서버 확인: %s", src_server)
-                else:
-                    return  # 不是游戏服务器，跳过
-            
-            # 如果还没有识别到服务器，跳过
+                pending = self._pending.setdefault(src_server, {})
+                pending[seq] = payload
+                self._trim_pending(pending)
+                self._parse_islands(pending)
+                start = self._pending_game_start(pending)
+                if start is None:
+                    return
+                blob, end_seq = self._contiguous_from(pending, start)
+                rest = {
+                    item_seq: item
+                    for item_seq, item in pending.items()
+                    if self._seq_on_or_after(item_seq, end_seq)
+                }
+                self._pending.clear()
+                self.current_server = src_server
+                self._parse_standalone(blob)
+                self._clear_tcp_cache()
+                self.tcp_next_seq = end_seq
+                self.tcp_cache.update(rest)
+                logger.debug("게임 서버 확인: %s", src_server)
+                return
+
             if not self.current_server:
                 return
                 
@@ -206,6 +340,8 @@ class PacketCapture:
                 
             # 处理完整的数据包
             self._process_complete_packets()
+            # 앞에 빠진 조각이 있어도, 그 뒤의 연속 구간은 따로 해석한다.
+            self._parse_islands(self.tcp_cache)
             
     def _identify_game_server(self, payload: bytes) -> bool:
         """识别游戏服务器"""
