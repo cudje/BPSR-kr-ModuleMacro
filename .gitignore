@@ -10,6 +10,7 @@ venv/
 credentials.json
 token.json
 user_info.txt
+backup.pdf
 
 # 실행 결과
 results/
