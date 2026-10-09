@@ -13,7 +13,7 @@
 ## 준비
 
 1. Python 3.11–3.14 64비트에서 `pip install -r requirements.txt`
-2. [Npcap](https://npcap.com/#download) 설치. 설치 시 WinPcap API 호환 모드를 켭니다.
+2. [Npcap](https://npcap.com/#download) 설치.
 
 ## 3. user_info
 
