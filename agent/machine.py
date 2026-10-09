@@ -13,7 +13,6 @@ log = logging.getLogger(__name__)
 
 # 상태 핸들러끼리의 짧은 간격 (핸들러 내부 대기는 별도)
 _DEFAULT_STEP_GAP = 0.05
-_LOW_SPEC_STEP_GAP = 0.1
 
 
 class StateMachine:
@@ -21,14 +20,12 @@ class StateMachine:
         self.ctx = ctx or AgentContext()
         self.state = State.IDLE
 
-    def start(self, *, low_spec: bool = False) -> None:
-        """7/8 — ① PREPARE_LOGIN부터 시작."""
+    def start(self) -> None:
+        """8 — PREPARE_LOGIN부터 시작."""
         self.ctx.running = True
-        self.ctx.low_spec = low_spec
         self.ctx.reset_cycle_flags()
         self.state = State.PREPARE_LOGIN
-        mode = "저사양" if low_spec else "일반"
-        log.info("시작 (%s) → %s", mode, self.state.name)
+        log.info("시작 → %s", self.state.name)
 
     def stop(self) -> None:
         """실행만 멈춤 (상태는 STOPPED)."""
@@ -66,9 +63,7 @@ class StateMachine:
         재귀가 아니라 while + step() 이라 호출 스택이 깊어지지 않는다.
         스텝 상한 없음 — 0 키 / Ctrl+C 등으로 running=False 될 때까지 순환.
         """
-        delay = step_delay
-        if delay is None:
-            delay = _LOW_SPEC_STEP_GAP if self.ctx.low_spec else _DEFAULT_STEP_GAP
+        delay = _DEFAULT_STEP_GAP if step_delay is None else step_delay
 
         while self.ctx.running:
             if self.state in (State.STOPPED, State.IDLE):

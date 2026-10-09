@@ -5,19 +5,24 @@
 **1920×1080 환경에서만 동작합니다.**  
 화면 인식용 이미지(`assets/images/`)와 좌표는 이 해상도 기준으로 이미 포함되어 있습니다. 다른 해상도에서는 맞추지 않습니다.
 
+## 개발자 테스트 환경
+
+매크로 기본 시간(`delay_ms=0`)은 아래 PC에서 맞춘 값입니다.
+매크로 실행 시 느리다면 `user_info.txt`의 `delay_ms`를 올리면 됩니다.
+
+- CPU: AMD Ryzen 5 5600X
+- GPU: NVIDIA GeForce RTX 4060 Ti
+
 ---
 
 ## 세팅 (이것만)
 
 64비트 Windows의 **Python 3.11, 3.12, 3.13, 3.14** 중 하나로 만드세요. 모듈 조합 계산 확장이 이 버전용으로만 들어 있습니다.
-
-```powershell
-py -3.12 -m venv env
-.\env\Scripts\Activate.ps1
+```
 pip install -r requirements.txt
 ```
 
-게임 패킷을 읽으려면 [Npcap](https://npcap.com/#download)도 설치합니다. 설치 화면에서 **WinPcap API 호환 모드**를 켜 두세요. 이 모드가 꺼져 있으면 패키지는 설치돼 있어도 패킷을 받지 못합니다.
+게임 패킷을 읽으려면 [Npcap](https://npcap.com/#download)도 설치합니다.
 
 그다음 두 가지만 맞추면 됩니다.
 
@@ -41,6 +46,8 @@ email=qwe@gmail.com
 index=10
 step_gap=0.04
 min_score=2000
+server=jp
+delay_ms=0
 ```
 
 - 게임 입력: `qwe+10@gmail.com`
@@ -48,6 +55,8 @@ min_score=2000
 - 슬롯이 꽉 차면 `index`가 +1 → 다음엔 `qwe+11@gmail.com`
 - `step_gap`: 매크로 각 스텝 직후 대기(초). 생략하면 `0.04`
 - `min_score`: 1위 점수가 이 값 이상이면 `good_results`, 아니면 `results`. 생략하면 항상 `results`
+- `server`: `kr`이면 `(959, 901)` 확인만 누릅니다. `jp`이면 서버 이미지를 찾은 뒤 확인합니다. 대소문자는 구분하지 않고, 생략하면 `jp`입니다.
+- `delay_ms`: 매크로 1·2의 `Delay`마다 더하는 시간(밀리초). `100`이면 0.1초가 더해집니다. 생략하면 `0`. `w`나 `d`를 누르고 있는 동안의 대기는 이동 거리라 더하지 않습니다.
 
 `user_info.txt`는 git에 올리지 않습니다 (개인 계정 정보).
 
@@ -91,7 +100,6 @@ python main.py
 | 키 | 동작 |
 |----|------|
 | **8** | 시작 |
-| **7** | 저사양 시작 (잠금) |
 | **9** | 영역 보기 ON/OFF |
 | **0** | 중단 → 메뉴로 |
 | **;** | 패킷 검사만. 최대 15초 안에 채널을 바꾸면 조합을 `results` 또는 `good_results`의 `packet_test.txt`에 저장 |
@@ -109,7 +117,7 @@ python main.py
 | 증상 | 확인 |
 |------|------|
 | 메일을 못 읽음 | `credentials.json` / 첫 동의 / OAuth 테스트 사용자 등록 |
-| 버튼을 못 찾음 | 해상도가 **1920×1080**인지, **9**로 영역 위치 |
+| 버튼을 못 찾음 | 디스플레이 및 게임 해상도가 **1920×1080**인지, **9**로 영역 위치 |
 | 앱이 확인되지 않음 | OAuth 테스트 사용자에 본인 메일 추가 |
 | 모듈 패킷이 안 잡힘 | Npcap 설치, WinPcap 호환 모드, 관리자 권한. **;** 는 15초 안에 채널 전환 |
 | `module_optimizer_cpp` 를 못 불러옴 | 사용 중인 Python이 **3.11–3.14 64비트**인지 |
@@ -118,10 +126,10 @@ python main.py
 
 ## 체크
 
-- [ ] Python **3.11–3.14 64비트**로 `py -3.12 -m venv env` → 활성화 → `pip install -r requirements.txt`
+- [ ] Python **3.11–3.14 64비트**로 → `pip install -r requirements.txt`
 - [ ] [Npcap](https://npcap.com/#download) 설치 (WinPcap API 호환 모드)
 - [ ] `user_info.example.txt` → `user_info.txt` 로 복사/이름 변경 후 email·index 수정
 - [ ] `credentials.json` 배치
-- [ ] 게임 해상도 **1920×1080**
+- [ ] 디스플레이 및 게임 해상도 **1920×1080**
 - [ ] `python main.py` → **첫 실행에서 브라우저 권한 허용** → `token.json` 확인
 - [ ] 한 번 더 돌려서 자동 구간이 이어지는지 확인

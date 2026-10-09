@@ -14,12 +14,13 @@ from typing import Literal
 from agent.context import AgentContext
 from agent.keyboard_util import key_down, key_tap, key_up
 from agent.mouse_util import left_click, left_down, left_up, move_to, right_click
-from agent.user_info import DEFAULT_STEP_GAP, load_user_info
+from agent.user_info import DEFAULT_DELAY_MS, DEFAULT_STEP_GAP, load_user_info
 
 log = logging.getLogger(__name__)
 
-# 저사양(7)일 때 지연만 이 배율로 늘림
-LOW_SPEC_DELAY_SCALE = 1.5
+# 누르고 있는 동안의 Delay 는 이동 거리라 delay_ms 를 더하지 않는다.
+_MOVE_KEYS = frozenset({"w", "d"})
+_PADDED_MACROS = frozenset({"MACRO_1", "MACRO_2"})
 
 
 @dataclass(frozen=True)
@@ -275,20 +276,27 @@ def run_macro(
     """시퀀스 실행. 중단되면 False.
 
     모든 스텝(Delay 포함) 직후 user_info.step_gap 만큼 텀을 둔다.
+    MACRO_1/MACRO_2 의 Delay 에는 delay_ms 를 더한다.
+    w 또는 d 를 누른 채인 Delay 는 이동 거리라 더하지 않는다.
     """
     try:
-        gap = load_user_info().step_gap
+        info = load_user_info()
+        gap = info.step_gap
+        extra = info.delay_ms / 1000.0
     except (OSError, ValueError):
         gap = DEFAULT_STEP_GAP
-    scale = LOW_SPEC_DELAY_SCALE if ctx.low_spec else 1.0
-    gap *= scale
+        extra = DEFAULT_DELAY_MS / 1000.0
+    pad = extra if name in _PADDED_MACROS else 0.0
+    holding_move = False
 
     for i, step in enumerate(steps, start=1):
         if not ctx.running:
             return False
 
         if isinstance(step, Delay):
-            wait = step.seconds * scale
+            wait = step.seconds
+            if pad > 0 and not holding_move:
+                wait += pad
             if not _sleep_while(ctx, wait):
                 return False
         elif isinstance(step, Click):
@@ -306,8 +314,12 @@ def run_macro(
             key_tap(step.key)
         elif isinstance(step, KeyDown):
             key_down(step.key)
+            if step.key.lower() in _MOVE_KEYS:
+                holding_move = True
         elif isinstance(step, KeyUp):
             key_up(step.key)
+            if step.key.lower() in _MOVE_KEYS:
+                holding_move = False
         else:
             log.warning("[%s] #%s unknown step: %s", name, i, step)
 

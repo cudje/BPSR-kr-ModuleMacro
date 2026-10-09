@@ -91,6 +91,11 @@ class PacketCapture:
         self.module_parser = ModuleParser()
         # 게임 서버로 확정되기 전 조각. 확정 패킷을 버리지 않고 이어서 해석한다.
         self._pending = {}
+        self._feeds = {}
+        self._threads = []
+        self._module_seen = False
+        self._zstd = None
+        self._cache_limit = 2 * 1024 * 1024
         
     def start_capture(self, callback: Callable[[Dict[str, Any]], None] = None):
         """
@@ -99,26 +104,44 @@ class PacketCapture:
         Args:
             callback: 数据包处理回调函数
         """
-        self.callback = callback
+        self.callback = self._remember_module
+        self._user_callback = callback
         self.is_running = True
+        self._module_seen = False
         
         logger.debug("패킷 캡처 시작: %s", self.interface or "자동")
         
         # 在新线程中运行抓包
-        capture_thread = threading.Thread(target=self._capture_loop)
+        capture_thread = threading.Thread(target=self._capture_loop, name="module-packet")
         capture_thread.daemon = True
         capture_thread.start()
         
         # 启动定时清理线程
-        cleanup_thread = threading.Thread(target=self._cleanup_loop)
+        cleanup_thread = threading.Thread(target=self._cleanup_loop, name="module-packet-cleanup")
         cleanup_thread.daemon = True
         cleanup_thread.start()
+        self._threads = [capture_thread, cleanup_thread]
         
     def stop_capture(self):
         """停止抓包"""
         self.is_running = False
+        for thread in list(self._threads):
+            if thread is not threading.current_thread():
+                thread.join(timeout=2.0)
+        self._threads.clear()
+        with self.tcp_lock:
+            self._pending.clear()
+            self._feeds.clear()
+            self.tcp_cache.clear()
+            self._data = b""
         logger.debug("패킷 캡처 중지")
         
+    def _remember_module(self, data) -> None:
+        if isinstance(data, dict) and data.get("v_data") is not None:
+            self._module_seen = True
+        if self._user_callback is not None:
+            self._user_callback(data)
+
     def _install_capture_buffer(self) -> None:
         """Npcap 커널 통을 키운다. conf.bufsize 는 Windows에서 적용되지 않는다."""
         try:
@@ -170,7 +193,7 @@ class PacketCapture:
             
     def _process_packet(self, packet):
         """处理单个数据包"""
-        if not self.is_running:
+        if not self.is_running or self._module_seen:
             return
             
         self.packet_count += 1
@@ -252,51 +275,101 @@ class PacketCapture:
             expect = (seq + len(chunk)) & 0xFFFFFFFF
         return bytes(blob), expect
 
-    def _parse_standalone(self, blob: bytes) -> None:
-        """이 바이트만 메시지 해석한다. 본 스트림 버퍼는 그대로 둔다."""
-        if not blob:
+    def _decompress(self, payload: bytes) -> bytes:
+        if self._zstd is None:
+            self._zstd = zstd.ZstdDecompressor()
+        return self._zstd.decompress(payload, max_output_size=1024 * 1024)
+
+    def _trim_bytes(self, pending: dict, limit: int | None = None) -> None:
+        """오래된 조각부터 버려 한 흐름이 limit 바이트를 넘지 않게 한다."""
+        cap = self._cache_limit if limit is None else limit
+        total = sum(len(buf) for buf in pending.values())
+        if total <= cap:
             return
+        owner = id(pending)
+        for old in sorted(pending):
+            total -= len(pending.pop(old))
+            self._feeds.pop((owner, old), None)
+            if total <= cap:
+                break
+
+    def _cap_flows(self, current: str) -> None:
+        while len(self._pending) > 24:
+            victim = None
+            for key, packets in self._pending.items():
+                if key == current:
+                    continue
+                if victim is None or len(packets) < len(self._pending[victim]):
+                    victim = key
+            if victim is None:
+                break
+            owner = id(self._pending[victim])
+            del self._pending[victim]
+            for key in [key for key in self._feeds if key[0] == owner]:
+                del self._feeds[key]
+
+    def _island_start(self, pending: dict, seq: int) -> int | None:
+        start = None
+        expect = None
+        for item_seq in sorted(pending):
+            if expect is None or item_seq != expect:
+                start = item_seq
+            if item_seq == seq:
+                return start
+            expect = (item_seq + len(pending[item_seq])) & 0xFFFFFFFF
+        return None
+
+    def _consume(self, blob: bytes) -> bytes:
+        """새 바이트만 메시지 해석하고, 아직 메시지가 안 끝난 꼬리를 돌려준다."""
+        if self._module_seen or not blob:
+            return b""
         saved = self._data
         self._data = blob
         try:
             self._process_complete_packets()
+            return self._data
         finally:
             self._data = saved
 
-    def _iter_islands(self, pending: dict) -> list[bytes]:
-        """순서 구멍으로 끊긴 연속 구간마다 바이트를 만든다."""
-        if not pending:
-            return []
-        islands: list[bytes] = []
-        expect = None
-        blob = bytearray()
-        for seq in sorted(pending):
-            chunk = pending[seq]
-            if expect is not None and seq != expect:
-                if blob:
-                    islands.append(bytes(blob))
-                blob = bytearray()
-            blob += chunk
-            expect = (seq + len(chunk)) & 0xFFFFFFFF
-        if blob:
-            islands.append(bytes(blob))
-        return islands
-
-    def _parse_islands(self, pending: dict) -> None:
-        """구멍 앞부분이 없어도, 이어진 구간 안에 모듈 정보가 있으면 읽는다."""
-        for island in self._iter_islands(pending):
-            self._parse_standalone(island)
+    def _feed_segment(self, pending: dict, seq: int) -> None:
+        """방금 들어온 조각이 속한 연속 구간만 이어서 해석한다."""
+        if self._module_seen or seq not in pending:
+            return
+        start = self._island_start(pending, seq)
+        if start is None:
+            return
+        payload = pending[seq]
+        end = (seq + len(payload)) & 0xFFFFFFFF
+        key = (id(pending), start)
+        state = self._feeds.get(key)
+        if state is not None and state["expect"] == seq:
+            state["tail"] = self._consume(state["tail"] + payload)
+            state["expect"] = end
+            state["end"] = end
+            return
+        blob, end_seq = self._contiguous_from(pending, start)
+        if state is not None and state.get("end") == end_seq:
+            return
+        self._feeds[key] = {
+            "expect": end_seq,
+            "tail": self._consume(blob),
+            "end": end_seq,
+        }
 
     def _process_tcp_stream(self, src_server: str, seq: int, payload: bytes):
         """处理TCP流数据"""
         with self.tcp_lock:
+            if self._module_seen:
+                return
             # 서버를 알기 전에는 조각을 모아 둔다.
             # 확인된 묶음은 따로 해석하고, 그 다음 순서부터 기존 재조립을 이어간다.
             if self.current_server != src_server:
                 pending = self._pending.setdefault(src_server, {})
                 pending[seq] = payload
                 self._trim_pending(pending)
-                self._parse_islands(pending)
+                self._trim_bytes(pending, 512 * 1024)
+                self._cap_flows(src_server)
+                self._feed_segment(pending, seq)
                 start = self._pending_game_start(pending)
                 if start is None:
                     return
@@ -307,8 +380,9 @@ class PacketCapture:
                     if self._seq_on_or_after(item_seq, end_seq)
                 }
                 self._pending.clear()
+                self._feeds.clear()
                 self.current_server = src_server
-                self._parse_standalone(blob)
+                self._consume(blob)
                 self._clear_tcp_cache()
                 self.tcp_next_seq = end_seq
                 self.tcp_cache.update(rest)
@@ -326,8 +400,10 @@ class PacketCapture:
                 return
                 
             # 缓存数据包
+            incoming = seq
             if (self.tcp_next_seq - seq) <= 0 or self.tcp_next_seq == -1:
                 self.tcp_cache[seq] = payload
+                self._trim_bytes(self.tcp_cache)
                 
             # 按顺序处理数据包
             while self.tcp_next_seq in self.tcp_cache:
@@ -341,7 +417,8 @@ class PacketCapture:
             # 处理完整的数据包
             self._process_complete_packets()
             # 앞에 빠진 조각이 있어도, 그 뒤의 연속 구간은 따로 해석한다.
-            self._parse_islands(self.tcp_cache)
+            if incoming in self.tcp_cache:
+                self._feed_segment(self.tcp_cache, incoming)
             
     def _identify_game_server(self, payload: bytes) -> bool:
         """识别游戏服务器"""
@@ -395,11 +472,13 @@ class PacketCapture:
             try:
                 packet_size = struct.unpack('>I', self._data[:4])[0]
                 
-                if len(self._data) < packet_size:
+                if packet_size < 6 or packet_size > 0x0fffff:
+                    self._data = b""
                     break
-                    
-                if packet_size > 0x0fffff:
-                    logger.error(f"无效的数据包长度: {packet_size}")
+
+                if len(self._data) < packet_size:
+                    if len(self._data) > self._cache_limit:
+                        self._data = b""
                     break
                     
                 # 提取完整数据包
@@ -501,8 +580,7 @@ class PacketCapture:
             # 解压缩
             if is_zstd_compressed:
                 try:
-                    dctx = zstd.ZstdDecompressor()
-                    msg_payload = dctx.decompress(msg_payload, max_output_size=1024*1024)
+                    msg_payload = self._decompress(msg_payload)
                     logger.debug(f"Notify解压缩成功, 解压缩后数据长度: {len(msg_payload)}")
                 except Exception as e:
                     logger.debug(f"Notify zstd解压缩失败: {e}")
@@ -558,8 +636,7 @@ class PacketCapture:
             # 解压缩
             if is_zstd_compressed:
                 try:
-                    dctx = zstd.ZstdDecompressor()
-                    nested_packet = dctx.decompress(nested_packet, max_output_size=1024*1024)
+                    nested_packet = self._decompress(nested_packet)
                     logger.debug(f"FrameDown解压缩成功, 解压缩后数据长度: {len(nested_packet)}")
                 except Exception as e:
                     logger.debug(f"FrameDown zstd解压缩失败: {e}")

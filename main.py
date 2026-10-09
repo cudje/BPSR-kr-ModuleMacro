@@ -2,7 +2,6 @@
 ModuleMacro 진입점.
 
 핫키:
-  7 — 저사양 시작 (잠금: 매크로1/2 지연만 늘리는 모드, 추후 개방)
   8 — 시작
   9 — 영역 보기
   0 — 실행 중 중단 (모든 동작 중지 후 초기 메뉴로)
@@ -30,13 +29,9 @@ logging.basicConfig(
 )
 log = logging.getLogger("main")
 
-# 저사양(7): 매크로1/2 지연만 조금 더 김. 지금은 잠금.
-LOW_SPEC_ENABLED = False
-
 MENU_TEXT = """
 ========================================
  ModuleMacro
-  7 : 저사양 시작 (잠금)
   8 : 시작
   9 : 영역 보기
   0 : 실행 중 중단 (초기 메뉴로)
@@ -49,7 +44,7 @@ MENU_TEXT = """
 
 def print_menu() -> None:
     print(MENU_TEXT)
-    log.info("대기 중 — 8/9/0/;/' / Ctrl+C(종료)  [7 잠금]")
+    log.info("대기 중 — 8/9/0/;/' / Ctrl+C(종료)")
 
 
 def show_regions() -> None:
@@ -90,12 +85,12 @@ def main() -> int:
         machine.abort_to_idle(silent=True)
         exit_event.set()
 
-    def run_machine(*, low_spec: bool) -> None:
+    def run_machine() -> None:
         if not worker_lock.acquire(blocking=False):
             log.warning("이미 실행 중 — 무시")
             return
         try:
-            machine.start(low_spec=low_spec)
+            machine.start()
             machine.run_until_stop()
         finally:
             if exit_event.is_set():
@@ -106,16 +101,9 @@ def main() -> int:
             print_menu()
             worker_lock.release()
 
-    def on_low_spec_start() -> None:
-        if not LOW_SPEC_ENABLED:
-            log.info("7 — 저사양 시작은 현재 잠금 상태입니다")
-            return
-        log.info("7 — 저사양 시작")
-        threading.Thread(target=run_machine, kwargs={"low_spec": True}, daemon=True).start()
-
     def on_start() -> None:
         log.info("8 — 시작")
-        threading.Thread(target=run_machine, kwargs={"low_spec": False}, daemon=True).start()
+        threading.Thread(target=run_machine, daemon=True).start()
 
     def on_show_regions() -> None:
         log.info("9 — 영역 보기")
@@ -174,7 +162,6 @@ def main() -> int:
     if hasattr(signal, "SIGBREAK"):
         signal.signal(signal.SIGBREAK, _on_sigint)
 
-    keyboard.add_hotkey("7", on_low_spec_start)
     keyboard.add_hotkey("8", on_start)
     keyboard.add_hotkey("9", on_show_regions)
     keyboard.add_hotkey("0", on_abort)

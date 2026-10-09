@@ -11,7 +11,7 @@ class State(Enum):
     """자동화 상위 상태."""
 
     IDLE = auto()
-    """대기. 8(시작) / 9(영역) 메뉴. 7(저사양)은 잠금 — 매크로 지연만 다른 모드."""
+    """대기. 8(시작) / 9(영역) 메뉴."""
 
     PREPARE_LOGIN = auto()
     """① Logout → LoginToEmail. 실패 시 Exit/Check/Start 후 재시도."""

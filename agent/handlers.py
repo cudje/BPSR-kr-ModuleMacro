@@ -301,7 +301,7 @@ def handle_email_login(ctx: AgentContext) -> State:
 
 
 def handle_server_select(ctx: AgentContext) -> State:
-    """③ 서버 선택 — 있으면 선택 후 확인, 없으면 확인만 → CREATE_CHARACTER."""
+    """③ 서버 선택. kr 은 확인만, jp 는 이미지 선택 후 확인 → CREATE_CHARACTER."""
     from agent.mouse_util import left_click
     from agent.regions import (
         SERVER,
@@ -309,12 +309,25 @@ def handle_server_select(ctx: AgentContext) -> State:
         SERVER_EXTRA_CLICK,
         SERVER_IMAGE,
     )
+    from agent.user_info import load_user_info
     from agent.vision import find_image_in_region_for
 
     def _still_running() -> bool:
         return ctx.running
 
-    log.info("서버 선택 시도")
+    try:
+        server_name = load_user_info().server
+    except (OSError, ValueError) as exc:
+        log.warning("server 설정을 읽지 못해 jp 로 진행: %s", exc)
+        server_name = "jp"
+
+    if server_name == "kr":
+        log.info("서버 선택 KR — 확인만")
+        cx2, cy2 = SERVER_CONFIRM_CLICK
+        left_click(cx2, cy2)
+        return State.CREATE_CHARACTER
+
+    log.info("서버 선택 JP")
 
     server = find_image_in_region_for(
         SERVER,

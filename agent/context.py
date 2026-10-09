@@ -10,8 +10,6 @@ class AgentContext:
     """상태 핸들러가 읽고 쓰는 공유 상태."""
 
     running: bool = False
-    # True면 매크로1/2 실행 시 지연을 조금 더 길게 (저사양). 7번 키로 설정.
-    low_spec: bool = False
 
     # 계정 index (user_info) / 캐릭터 슬롯 Num (V2=2, V3=3, 신규=1)
     account_id: str | None = None

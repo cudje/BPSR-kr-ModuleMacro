@@ -1,4 +1,4 @@
-"""user_info.txt — 이메일 + 인덱스 + 매크로 스텝 텀 + 최소 점수."""
+"""user_info.txt — 이메일 + 인덱스 + 매크로 스텝 텀 + 최소 점수 + 서버 + 추가 지연."""
 
 from __future__ import annotations
 
@@ -18,6 +18,8 @@ GMAIL_CREDENTIALS_PATH = PROJECT_ROOT / "credentials.json"
 GMAIL_TOKEN_PATH = PROJECT_ROOT / "token.json"
 
 DEFAULT_STEP_GAP = 0.04
+DEFAULT_SERVER = "jp"
+DEFAULT_DELAY_MS = 0.0
 
 
 @dataclass
@@ -27,6 +29,10 @@ class UserInfo:
     step_gap: float = DEFAULT_STEP_GAP
     # None 이면 점수와 상관없이 results 에 저장한다.
     min_score: float | None = None
+    # kr: 확인만. jp: 서버 이미지를 찾은 뒤 확인.
+    server: str = DEFAULT_SERVER
+    # MACRO_1/MACRO_2 의 Delay 에 더하는 시간(ms). 이동 키를 누른 동안은 제외.
+    delay_ms: float = DEFAULT_DELAY_MS
     path: Path = USER_INFO_PATH
 
     @property
@@ -60,6 +66,8 @@ def load_user_info(path: Path | None = None) -> UserInfo:
     index: int | None = None
     step_gap = DEFAULT_STEP_GAP
     min_score: float | None = None
+    server = DEFAULT_SERVER
+    delay_ms = DEFAULT_DELAY_MS
 
     with target.open(encoding="utf-8") as f:
         for raw in f:
@@ -82,6 +90,10 @@ def load_user_info(path: Path | None = None) -> UserInfo:
                     step_gap = DEFAULT_STEP_GAP
             elif key == "min_score":
                 min_score = float(value)
+            elif key == "server":
+                server = _parse_server(value)
+            elif key == "delay_ms":
+                delay_ms = _parse_delay_ms(value)
             else:
                 log.warning("알 수 없는 키(무시): %s", key)
 
@@ -93,8 +105,26 @@ def load_user_info(path: Path | None = None) -> UserInfo:
         index=index,
         step_gap=step_gap,
         min_score=min_score,
+        server=server,
+        delay_ms=delay_ms,
         path=target,
     )
+
+
+def _parse_server(value: str) -> str:
+    name = value.strip().lower()
+    if name in ("kr", "jp"):
+        return name
+    log.warning("server 는 kr 또는 jp 만 가능해서 기본값 %s 사용: %s", DEFAULT_SERVER, value)
+    return DEFAULT_SERVER
+
+
+def _parse_delay_ms(value: str) -> float:
+    ms = float(value)
+    if ms < 0:
+        log.warning("delay_ms 가 음수라 기본값 %.0f 사용", DEFAULT_DELAY_MS)
+        return DEFAULT_DELAY_MS
+    return ms
 
 
 def save_user_info(info: UserInfo, path: Path | None = None) -> None:
@@ -107,10 +137,14 @@ def save_user_info(info: UserInfo, path: Path | None = None) -> None:
         "# index : 현재 계정 번호 → 로그인 입력 local+{index}@domain\n"
         "# step_gap : 매크로 각 스텝 직후 텀(초)\n"
         "# min_score : 1위 점수가 이 값 이상이면 good_results 에 저장\n"
+        "# server : kr 이면 확인만, jp 이면 서버 이미지를 찾은 뒤 확인\n"
+        "# delay_ms : MACRO_1/MACRO_2 Delay 에 더하는 시간(ms). 이동 중 대기는 제외\n"
         "\n"
         f"email={info.email.strip()}\n"
         f"index={info.index}\n"
         f"step_gap={info.step_gap}\n"
+        f"server={info.server}\n"
+        f"delay_ms={info.delay_ms:g}\n"
         f"{min_score_line}"
     )
     target.write_text(text, encoding="utf-8")

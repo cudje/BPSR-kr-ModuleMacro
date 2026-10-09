@@ -34,11 +34,30 @@ class MatchResult:
         return (self.left + self.right) // 2, (self.top + self.bottom) // 2
 
 
+_template_cache: dict[str, np.ndarray] = {}
+
+
+def _load_template(path: Path) -> np.ndarray | None:
+    """같은 템플릿은 한 번만 읽는다. 화면 매칭 결과는 그대로다."""
+    key = str(path)
+    cached = _template_cache.get(key)
+    if cached is not None:
+        return cached
+    template = cv2.imread(key, cv2.IMREAD_COLOR)
+    if template is None:
+        return None
+    _template_cache[key] = template
+    return template
+
+
 def grab_region_bgr(region: Region) -> np.ndarray:
     """영역 스크린샷을 OpenCV BGR ndarray로."""
     bbox = (region.left, region.top, region.right, region.bottom)
     img = ImageGrab.grab(bbox=bbox)
-    rgb = np.array(img)
+    try:
+        rgb = np.array(img)
+    finally:
+        img.close()
     return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
 
 
@@ -55,7 +74,7 @@ def find_image_in_region(
         log.warning("템플릿 없음: %s", path)
         return MatchResult(found=False, confidence=0.0)
 
-    template = cv2.imread(str(path), cv2.IMREAD_COLOR)
+    template = _load_template(path)
     if template is None:
         log.warning("템플릿 로드 실패: %s", path)
         return MatchResult(found=False, confidence=0.0)
@@ -178,7 +197,7 @@ def find_first_image_in_region_for(
         if not p.is_file():
             log.warning("템플릿 없음: %s (%s)", key, p)
             continue
-        tmpl = cv2.imread(str(p), cv2.IMREAD_COLOR)
+        tmpl = _load_template(p)
         if tmpl is None:
             log.warning("템플릿 로드 실패: %s (%s)", key, p)
             continue
