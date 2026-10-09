@@ -16,7 +16,7 @@ SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 # 제목 예: "977614 인증 코드를 확인하세요"
 SUBJECT_CODE_RE = re.compile(r"(\d{6})\s*인증\s*코드")
 GMAIL_QUERY = "newer_than:1d 인증 코드"
-DEFAULT_TIMEOUT_SEC = 90.0
+DEFAULT_TIMEOUT_SEC = 60.0
 POLL_INTERVAL_SEC = 2.5
 
 

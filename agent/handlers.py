@@ -177,7 +177,7 @@ def handle_prepare_login(ctx: AgentContext) -> State:
 def handle_email_login(ctx: AgentContext) -> State:
     """② 이메일 입력 → 인증요청 클릭 → Gmail 코드 → Login → SERVER_SELECT."""
     from agent.gmail_client import get_gmail_service, snapshot_latest_auth_id, wait_for_auth_code
-    from agent.keyboard_util import select_all_and_type
+    from agent.keyboard_util import hotkey, select_all_and_type
     from agent.mouse_util import left_click
     from agent.regions import (
         AUTH_CODE_CLICK,
@@ -254,7 +254,7 @@ def handle_email_login(ctx: AgentContext) -> State:
     left_click(px, py)
 
     auth = wait_for_auth_code(
-        timeout_sec=90.0,
+        timeout_sec=60.0,
         not_before_ms=not_before_ms,
         exclude_message_id=prev_id,
         should_continue=_still_running,
@@ -262,9 +262,13 @@ def handle_email_login(ctx: AgentContext) -> State:
     if not ctx.running:
         return State.IDLE
     if auth is None:
-        log.warning("인증번호 수신 실패")
+        log.info("인증번호 수신 실패 — ALT+F4 후 게임 재시작")
         ctx.last_error = "auth code timeout"
-        return State.STOPPED
+        hotkey("alt", "f4")
+        if not _sleep_while_running(ctx, 1.0):
+            return State.IDLE
+        ctx.reset_cycle_flags()
+        return _restart_via_start(ctx)
 
     log.info("인증번호 %s", auth.code)
 
