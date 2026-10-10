@@ -10,17 +10,18 @@ BPSR 모듈 리세마라를 위한 자동 계정 생성 및 모듈 조합 결과
 
 ## 테스트 환경 (개발 환경이며 프로그램 동작 사양을 뜻하는게 아닙니다.)
 
-- CPU : AMD Ryzen 5 5600X
-- GPU : NVIDIA GeForce RTX 4060 Ti
+- CPU : AMD Ryzen 5 5600X / GPU : NVIDIA GeForce RTX 4060 Ti
+- CPU : Intel Core i7-13700K / GPU : NVIDIA GeForce RTX 3060
 
-매크로가 느리면 `delay_ms` 를 올립니다. `delay_ms=0` 은 이 PC 기준입니다.
+매크로가 느리면 `delay_ms` 를 올립니다. `delay_ms=0` 은 Ryzen 5 5600X, RTX 4060 Ti 기준입니다.
 
 ## 준비
 
 1. Python 3.11–3.14 64비트에서 `pip install -r requirements.txt`
-2. [Npcap](https://npcap.com/#download) 설치.
+2. Visual C++ 재배포 패키지가 없으면 [vc_redist.x64.exe](https://aka.ms/vc14/vc_redist.x64.exe) 를 설치합니다.
+3. [Npcap](https://npcap.com/#download) 설치.
 
-## 3. user_info
+## 4. user_info
 
 `user_info.example.txt` 를 `user_info.txt` 로 바꾼 뒤 값을 수정합니다.
 
@@ -40,7 +41,7 @@ delay_ms=0
 - `server` : `kr` 은 한섭, `jp` 는 일섭입니다.
 - `delay_ms` : 사양이 낮을 때 매크로 1·2의 대기마다 더하는 시간(밀리초)입니다. `100` 이면 각 대기에 0.1초가 더해집니다.
 
-## 4. Gmail API
+## 5. Gmail API
 
 인증번호를 메일에서 읽으려면 Google 연동이 필요합니다. 동의하는 Gmail 은 `user_info.txt` 의 `email` 과 같아야 합니다.
 
