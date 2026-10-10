@@ -246,7 +246,8 @@ def handle_email_login(ctx: AgentContext) -> State:
     import time as _time
 
     click_ms = int(_time.time() * 1000)
-    not_before_ms = max(prev_ms, click_ms - 5_000)
+    # 기준 메일이 있으면 그 시각만 쓴다. PC 시계가 빠르면 방금 온 메일도 거절된다.
+    not_before_ms = prev_ms if prev_ms else click_ms - 5_000
 
     if not _sleep_while_running(ctx, 0.1):
         return State.IDLE
@@ -254,7 +255,7 @@ def handle_email_login(ctx: AgentContext) -> State:
     left_click(px, py)
 
     auth = wait_for_auth_code(
-        timeout_sec=60.0,
+        timeout_sec=80.0,
         not_before_ms=not_before_ms,
         exclude_message_id=prev_id,
         should_continue=_still_running,
@@ -486,7 +487,7 @@ def handle_run_macro_2(ctx: AgentContext) -> State:
     from agent.window_util import force_foreground, get_console_hwnd, get_foreground_hwnd
 
     ctx.module_vdata = None
-    for channel in ("11", "12", "13"):
+    for channel in ("11", "12", "13", "14"):
         if not ctx.running:
             return State.IDLE
         log.info("채널 %s — 모듈 패킷 대기 후 채널 전환", channel)
@@ -534,7 +535,7 @@ def handle_run_macro_2(ctx: AgentContext) -> State:
             break
         log.info("채널 %s 모듈 패킷 미수신", channel)
     else:
-        log.info("채널 11·12·13 모듈 패킷 미수신 — 로그아웃으로 진행")
+        log.info("채널 11·12·13·14 모듈 패킷 미수신 — 로그아웃으로 진행")
 
     return State.SAVE_SCREENSHOT
 

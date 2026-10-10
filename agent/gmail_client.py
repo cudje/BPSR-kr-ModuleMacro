@@ -15,9 +15,9 @@ log = logging.getLogger(__name__)
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 # 제목 예: "977614 인증 코드를 확인하세요"
 SUBJECT_CODE_RE = re.compile(r"(\d{6})\s*인증\s*코드")
-GMAIL_QUERY = "newer_than:1d 인증 코드"
-DEFAULT_TIMEOUT_SEC = 60.0
-POLL_INTERVAL_SEC = 2.5
+GMAIL_QUERY = "in:anywhere newer_than:1d 인증 코드"
+DEFAULT_TIMEOUT_SEC = 80.0
+POLL_INTERVAL_SEC = 4.0
 
 
 @dataclass(frozen=True)
@@ -114,7 +114,8 @@ def snapshot_latest_auth_id(service) -> tuple[str | None, int]:
     mails = fetch_latest_auth_mails(service, max_results=3)
     if not mails:
         return None, 0
-    return mails[0].message_id, mails[0].internal_date_ms
+    mail = mails[0]
+    return mail.message_id, mail.internal_date_ms
 
 
 def wait_for_auth_code(

@@ -192,7 +192,7 @@ MACRO_2: tuple[MacroStep, ...] = (
     Delay(0.200),
 )
 
-# 창 닫기·채널 변환. 채널 번호만 바꿔 11 → 12 → 13 순으로 다시 시도한다.
+# 창 닫기·채널 변환. 채널 번호만 바꿔 11 → 12 → 13 → 14 순으로 다시 시도한다.
 # 패킷은 이 입력 도중 또는 직후에 도착한다.
 def channel_switch_macro(channel: str) -> tuple[MacroStep, ...]:
     steps: list[MacroStep] = [
@@ -206,7 +206,7 @@ def channel_switch_macro(channel: str) -> tuple[MacroStep, ...]:
     return tuple(steps)
 
 
-MACRO_2_CHANNEL = channel_switch_macro("13")
+MACRO_2_CHANNEL = channel_switch_macro("14")
 
 # 이전 모듈 탭 스크린샷용 입력. 패킷 계산으로 바꾸면서 실행하지 않는다.
 # # 모듈 탭 들어가기
