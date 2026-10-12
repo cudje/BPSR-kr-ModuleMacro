@@ -1,6 +1,7 @@
 """results / good_results 를 집계하고 한 장의 그림으로 저장한다.
 
-누락은 results 맨 위 캐릭터부터 마지막 캐릭터까지,
+하위 폴더(다른 PC에서 가져온 tan_results 등)도 각각 따로 집계한 뒤 합친다.
+누락은 각 results 맨 위 캐릭터부터 그 폴더의 마지막 캐릭터까지,
 1333_2, 1333_3, 1334_1 순서로 파일이 없는 칸의 개수다.
 """
 
@@ -80,18 +81,49 @@ def _character_span(start: tuple[int, int], end: tuple[int, int]):
         index, slot = _next_character(index, slot)
 
 
-def collect() -> dict:
-    results = _indexed_files(RESULT_DIR)
-    goods = _indexed_files(GOOD_RESULT_DIR)
-    if not results:
-        raise SystemExit(f"results 에 결과 파일이 없습니다: {RESULT_DIR}")
+def _source_pairs() -> list[tuple[Path | None, Path | None]]:
+    """최상위 results/good_results 와, 다른 PC에서 넣은 하위 폴더 쌍."""
+    pairs: list[tuple[Path | None, Path | None]] = [(RESULT_DIR, GOOD_RESULT_DIR)]
+    good_subs: dict[str, Path] = {}
+    if GOOD_RESULT_DIR.is_dir():
+        good_subs = {path.name: path for path in GOOD_RESULT_DIR.iterdir() if path.is_dir()}
+    used: set[str] = set()
+    if RESULT_DIR.is_dir():
+        for path in sorted(item for item in RESULT_DIR.iterdir() if item.is_dir()):
+            prefix = path.name[: -len("_results")] if path.name.endswith("_results") else path.name
+            good = good_subs.get(path.name) or good_subs.get(f"{prefix}_good_results")
+            if good is not None:
+                used.add(good.name)
+            pairs.append((path, good))
+    for name, path in sorted(good_subs.items()):
+        if name not in used:
+            pairs.append((None, path))
+    return pairs
 
-    start = (results[0][0], results[0][1])
-    start_path = results[0][2]
-    present = {(index, slot) for index, slot, _path in results + goods}
-    end = max(key for key in present if key >= start)
-    expected = list(_character_span(start, end))
-    missing = [f"{index}_{slot}" for index, slot in expected if (index, slot) not in present]
+
+def _summarize_pair(result_dir: Path | None, good_dir: Path | None) -> dict | None:
+    results = _indexed_files(result_dir) if result_dir is not None else []
+    goods = _indexed_files(good_dir) if good_dir is not None else []
+    if not results and not goods:
+        return None
+
+    missing: list[str] = []
+    expected_count = 0
+    span = None
+    if results:
+        start = (results[0][0], results[0][1])
+        present = {(index, slot) for index, slot, _path in results + goods}
+        end = max(key for key in present if key >= start)
+        expected = list(_character_span(start, end))
+        expected_count = len(expected)
+        missing = [f"{index}_{slot}" for index, slot in expected if (index, slot) not in present]
+        span = {
+            "folder": result_dir.name,
+            "start_name": results[0][2].name,
+            "start_label": f"{start[0]}_{start[1]}",
+            "end_label": f"{end[0]}_{end[1]}",
+            "expected_count": expected_count,
+        }
 
     invalid_count = 0
     below_scores: list[float] = []
@@ -110,14 +142,31 @@ def collect() -> dict:
             good_scores.append(score)
 
     return {
-        "start_name": start_path.name,
-        "start_label": f"{start[0]}_{start[1]}",
-        "end_label": f"{end[0]}_{end[1]}",
-        "expected_count": len(expected),
+        "span": span,
         "missing": missing,
         "invalid_count": invalid_count,
         "below_scores": below_scores,
         "good_scores": good_scores,
+    }
+
+
+def collect() -> dict:
+    parts = [part for pair in _source_pairs() if (part := _summarize_pair(*pair)) is not None]
+    if not parts or not any(part["span"] for part in parts):
+        raise SystemExit(f"results 에 결과 파일이 없습니다: {RESULT_DIR}")
+
+    spans = [part["span"] for part in parts if part["span"] is not None]
+    first = spans[0]
+    return {
+        "spans": spans,
+        "start_name": first["start_name"],
+        "start_label": first["start_label"],
+        "end_label": spans[-1]["end_label"],
+        "expected_count": sum(span["expected_count"] for span in spans),
+        "missing": [name for part in parts for name in part["missing"]],
+        "invalid_count": sum(part["invalid_count"] for part in parts),
+        "below_scores": [score for part in parts for score in part["below_scores"]],
+        "good_scores": [score for part in parts for score in part["good_scores"]],
     }
 
 
@@ -257,8 +306,11 @@ def main() -> None:
     out_path = args.output
     out_path.parent.mkdir(parents=True, exist_ok=True)
     save_figure(summary, out_path)
-    print(f"기준 파일: {summary['start_name']}")
-    print(f"범위: {summary['start_label']}-{summary['end_label']} ({summary['expected_count']}개 캐릭터)")
+    for span in summary["spans"]:
+        print(
+            f"{span['folder']}: {span['start_name']} 부터 "
+            f"{span['start_label']}-{span['end_label']} ({span['expected_count']}개 캐릭터)"
+        )
     print(f"누락: {len(summary['missing'])}")
     if summary["missing"]:
         preview = ", ".join(summary["missing"][:30])
